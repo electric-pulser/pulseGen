@@ -31,7 +31,7 @@
 // Teensyduino
 //
 #if defined(TEENSYDUINO)
-	IntervalTimer _pulseGenTimer1;
+  IntervalTimer _pulseGenTimer1;
   IntervalTimer _pulseGenTimer2;
   IntervalTimer _pulseGenTimer3;
 #endif
@@ -39,26 +39,26 @@
 // Seedstudio XIAO M0
 //
 #if defined(SEEED_XIAO_M0)
-	// 24 bits timer
-	#include <TimerTCC0.h>
+  // 24 bits timer
+  #include <TimerTCC0.h>
   // uses TimerTcc0
-	// 16 bits timer
+  // 16 bits timer
   #include <TimerTC3.h>
   // uses TimerTc3
   //#include <TimerTC1.h>
   // uses TimerTc1
-	//#include <TimerTC4.h>
-	// uses TimerTc4
+  //#include <TimerTC4.h>
+  // uses TimerTc4
 #endif
 //
 // ESP32 family
 //
 #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-	hw_timer_t * _pulseGenTimer1 = NULL;
+  hw_timer_t * _pulseGenTimer1 = NULL;
   hw_timer_t * _pulseGenTimer2 = NULL;
   hw_timer_t * _pulseGenTimer3 = NULL;
-	portMUX_TYPE _pulseGenTimerMux = portMUX_INITIALIZER_UNLOCKED;
-	#define TIMER_ID	  0
+  portMUX_TYPE _pulseGenTimerMux = portMUX_INITIALIZER_UNLOCKED;
+  #define TIMER_ID	  0
   #define TIMER_ID_1	1
   #define TIMER_ID_2	2
 #endif
@@ -67,12 +67,12 @@
 // multicore archs
 //
 #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-	#define ATOMIC(X) portENTER_CRITICAL_ISR(&_pulseGenTimerMux); X; portEXIT_CRITICAL_ISR(&_pulseGenTimerMux);
+  #define ATOMIC(X) portENTER_CRITICAL_ISR(&_pulseGenTimerMux); X; portEXIT_CRITICAL_ISR(&_pulseGenTimerMux);
 //
 // singlecore archs
 //
 #else
-	#define ATOMIC(X) noInterrupts(); X; interrupts();
+  #define ATOMIC(X) noInterrupts(); X; interrupts();
 #endif
 
 // move this to wavetable.h as definition
@@ -87,72 +87,62 @@ void pulseGenInitTimer1()
 {
   ATOMIC(
     // 16bits Timer1 init
-#if CLOCK_BASE_US == 10
-    // operates at 100000hz - 10us
     TCCR1A = 0; // set entire TCCR1A register to 0
     TCCR1B = 0; // same for TCCR1B
     TCNT1  = 0; // initialize counter value to 0
+  #if CLOCK_BASE_US == 10
+    // operates at 100000hz - 10us
     // set compare match register for 100000 Hz increments
     OCR1A = 159; // = 16000000 / (1 * 100000) - 1 (must be <65536)
-    // turn on CTC mode
-    TCCR1B |= (1 << WGM12);
     // Set CS12, CS11 and CS10 bits for 1 prescaler
     TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
-    // enable timer compare interrupt
-    TIMSK1 |= (1 << OCIE1A);
-#elif CLOCK_BASE_US == 100
+  #elif CLOCK_BASE_US == 100
     // operates at 10000hz - 100us
-    TCCR1A = 0; // set entire TCCR1A register to 0
-    TCCR1B = 0; // same for TCCR1B
-    TCNT1  = 0; // initialize counter value to 0
     // set compare match register for 10000 Hz increments
     OCR1A = 1599; // = 16000000 / (1 * 10000) - 1 (must be <65536)
-    // turn on CTC mode
-    TCCR1B |= (1 << WGM12);
     // Set CS12, CS11 and CS10 bits for 1 prescaler
     TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
+  #endif
+    // turn on CTC mode
+    TCCR1B |= (1 << WGM12);
     // enable timer compare interrupt
     TIMSK1 |= (1 << OCIE1A);
-#endif
   )
 }
 
 #else
 
-	// forward declaration of ISR
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		void ARDUINO_ISR_ATTR pulseGenISR1();
-	#else
-		void pulseGenISR1();
-	#endif
+  // forward declaration of ISR
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+void ARDUINO_ISR_ATTR pulseGenISR1();
+  #else
+void pulseGenISR1();
+  #endif
 
 void pulseGenInitTimer1()
 {
   const long init_clock = CLOCK_BASE_US;
-	#if defined(TEENSYDUINO)
-		_pulseGenTimer1.begin(pulseGenISR1, init_clock); 
-		_pulseGenTimer1.priority(0);
-	#endif
 
-	#if defined(SEEED_XIAO_M0)
-		TimerTcc0.initialize(init_clock);
+  #if defined(TEENSYDUINO)
+  _pulseGenTimer1.begin(pulseGenISR1, init_clock); 
+  _pulseGenTimer1.priority(0);
+  #endif
 
-		// attach to generic uclock ISR
-		TimerTcc0.attachInterrupt(pulseGenISR1);
-	#endif
+  #if defined(SEEED_XIAO_M0)
+  TimerTcc0.initialize(init_clock);
+  // attach to generic uclock ISR
+  TimerTcc0.attachInterrupt(pulseGenISR1);
+  #endif
 
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		_pulseGenTimer1 = timerBegin(TIMER_ID, 80, true);
-
-		// attach to generic uclock ISR
-		timerAttachInterrupt(_pulseGenTimer1, &pulseGenISR1, true);
-
-		// init clock tick time
-		timerAlarmWrite(_pulseGenTimer1, init_clock, true); 
-
-		// activate it!
-		timerAlarmEnable(_pulseGenTimer1);
-	#endif
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+  _pulseGenTimer1 = timerBegin(TIMER_ID, 80, true);
+  // attach to generic uclock ISR
+  timerAttachInterrupt(_pulseGenTimer1, &pulseGenISR1, true);
+  // init clock tick time
+  timerAlarmWrite(_pulseGenTimer1, init_clock, true); 
+  // activate it!
+  timerAlarmEnable(_pulseGenTimer1);
+  #endif
 }
 #endif
 
@@ -162,91 +152,84 @@ void pulseGenInitTimer1()
 #if defined(ARDUINO_ARCH_AVR)
 void pulseGenInitTimer2()
 {
-	ATOMIC(
-#if defined(__AVR_ATmega32U4__)	
-		// avr general timer3 - 16bits
-  #if CLOCK_BASE_US == 10
+  ATOMIC(
+  #if defined(__AVR_ATmega32U4__)	
+    // avr general timer3 - 16bits
     TCCR3A = 0; // set entire TCCR1A register to 0
     TCCR3B = 0; // same for TCCR1B
     TCNT3  = 0; // initialize counter value to 0
+    #if CLOCK_BASE_US == 10
     // set compare match register for 100000 Hz increments
     OCR3A = 159; // = 16000000 / (1 * 100000) - 1 (must be <65536)
-    // turn on CTC mode
-    TCCR3B |= (1 << WGM32);
     // Set CS12, CS11 and CS10 bits for 1 prescaler
     TCCR3B |= (0 << CS32) | (0 << CS31) | (1 << CS30);
+    #elif CLOCK_BASE_US == 100
+    // operates at 10000hz - 100us
+    // set compare match register for 10000 Hz increments
+    OCR3A = 1599; // = 16000000 / (1 * 10000) - 1 (must be <65536)
+    // Set CS12, CS11 and CS10 bits for 1 prescaler
+    TCCR3B |= (0 << CS32) | (0 << CS31) | (1 << CS30);
+    #endif
+    // turn on CTC mode
+    TCCR3B |= (1 << WGM32);
     // enable timer compare interrupt
     TIMSK3 |= (1 << OCIE3A);
-  #elif CLOCK_BASE_US == 100
-    //...
-  #endif
-#else
+  #else
     // avr general timer2 - 8bits
-  #if CLOCK_BASE_US == 10
     TCCR2A = 0;
     TCCR2B = 0;
     TCNT2 = 0;
+    #if CLOCK_BASE_US == 10
     // 100000 Hz (16000000/((4+1)*32))
     OCR2A = 4;
-    // CTC
-    TCCR2A |= (1 << WGM21);
     // Prescaler 32
     TCCR2B |= (1 << CS21) | (1 << CS20);
-    // Output Compare Match A Interrupt Enable
-    TIMSK2 |= (1 << OCIE2A);
-  #elif CLOCK_BASE_US == 100
-    TCCR2A = 0;
-    TCCR2B = 0;
-    TCNT2 = 0;
+    #elif CLOCK_BASE_US == 100
     // 10000 Hz (16000000/((24+1)*64))
     OCR2A = 24;
-    // CTC
-    TCCR2A |= (1 << WGM21);
     // Prescaler 64
     TCCR2B |= (1 << CS22);
+    #endif
+    // CTC
+    TCCR2A |= (1 << WGM21);
     // Output Compare Match A Interrupt Enable
     TIMSK2 |= (1 << OCIE2A);
   #endif
-#endif
-	)
+  )
 }
 // ARM timers
 #else
 
-	// forward declaration of ISR2
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		void ARDUINO_ISR_ATTR pulseGenISR2();
-	#else
-		void pulseGenISR2();
-	#endif
-	
+  // forward declaration of ISR2
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+void ARDUINO_ISR_ATTR pulseGenISR2();
+  #else
+void pulseGenISR2();
+  #endif
+
 void pulseGenInitTimer2()
 {
   const long init_clock = CLOCK_BASE_US;
   #if defined(TEENSYDUINO)
-		_pulseGenTimer2.begin(pulseGenISR2, init_clock);
-		_pulseGenTimer2.priority(70);
-	#endif
+  _pulseGenTimer2.begin(pulseGenISR2, init_clock);
+  _pulseGenTimer2.priority(70);
+  #endif
 
-	#if defined(SEEED_XIAO_M0)
-		TimerTc3.initialize(init_clock);
+  #if defined(SEEED_XIAO_M0)
+  TimerTc3.initialize(init_clock);
+  // attach to generic uclock ISR
+  TimerTc3.attachInterrupt(pulseGenISR2);
+  #endif
 
-		// attach to generic uclock ISR
-		TimerTc3.attachInterrupt(pulseGenISR2);
-	#endif
-
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		_pulseGenTimer2 = timerBegin(TIMER_ID, 70, true);
-
-		// attach to generic uclock ISR
-		timerAttachInterrupt(_pulseGenTimer2, &pulseGenISR2, true);
-
-		// init clock tick time
-		timerAlarmWrite(_pulseGenTimer2, init_clock, true); 
-
-		// activate it!
-		timerAlarmEnable(_pulseGenTimer2);
-	#endif
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+  _pulseGenTimer2 = timerBegin(TIMER_ID, 70, true);
+  // attach to generic uclock ISR
+  timerAttachInterrupt(_pulseGenTimer2, &pulseGenISR2, true);
+  // init clock tick time
+  timerAlarmWrite(_pulseGenTimer2, init_clock, true); 
+  // activate it!
+  timerAlarmEnable(_pulseGenTimer2);
+  #endif
 }
 #endif
 
@@ -257,84 +240,63 @@ void pulseGenInitTimer2()
 #if defined(ARDUINO_ARCH_AVR)
 void pulseGenInitTimer3()
 {
-	ATOMIC(
+  ATOMIC(
     // avr general timer0 - 8bits
-  #if CLOCK_BASE_US == 10
     TCCR0A = 0;
     TCCR0B = 0;
     TCNT0 = 0;
-
+  #if CLOCK_BASE_US == 10
     // 100000 Hz (16000000/((19+1)*8))
     OCR0A = 19;
-    // CTC
-    TCCR0A |= (1 << WGM01);
     // Prescaler 8
     TCCR0B |= (1 << CS01);
-    // Output Compare Match A Interrupt Enable
-    TIMSK0 |= (1 << OCIE0A);
   #elif CLOCK_BASE_US == 100
-    TCCR0A = 0;
-    TCCR0B = 0;
-    TCNT0 = 0;
-
     // 10000 Hz (16000000/((24+1)*64))
     OCR0A = 24;
-    // CTC
-    TCCR0A |= (1 << WGM01);
     // Prescaler 64
     TCCR0B |= (1 << CS01) | (1 << CS00);
+  #endif
+    // CTC
+    TCCR0A |= (1 << WGM01);
     // Output Compare Match A Interrupt Enable
     TIMSK0 |= (1 << OCIE0A);
-  #endif
-	)
-  // or we can take a ride at 1khz timer0 for control stuff
-  // just turn compare interrupt on
-  /*
-	ATOMIC(
-    // turn on CTC mode
-    TCCR0A |= (1 << WGM01);
-    // enable timer compare interrupt
-    TIMSK0 |= (1 << OCIE0A);
-	)
-  */
+  )
 }
 // ARM timers
 #else
 
-	// forward declaration of ISR3
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		void ARDUINO_ISR_ATTR pulseGenISR3();
-	#else
-		void pulseGenISR3();
-	#endif
-	
+  // forward declaration of ISR3
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+void ARDUINO_ISR_ATTR pulseGenISR3();
+  #else
+void pulseGenISR3();
+  #endif
+
 void pulseGenInitTimer3()
 {
   const long init_clock = CLOCK_BASE_US;
+
   #if defined(TEENSYDUINO)
-		_pulseGenTimer3.begin(pulseGenISR3, init_clock);
-		_pulseGenTimer3.priority(60);
-	#endif
+  _pulseGenTimer3.begin(pulseGenISR3, init_clock);
+  _pulseGenTimer3.priority(60);
+  #endif
 
-	#if defined(SEEED_XIAO_M0)
-    // sorry no official support yet for other timers
-		//TimerTC4.initialize(init_clock);
-		// attach to generic uclock ISR
-		//TimerTC4.attachInterrupt(pulseGenISR3);
-	#endif
+  #if defined(SEEED_XIAO_M0)
+  // sorry no official support yet for other timers
+  //TimerTC4.initialize(init_clock);
+  // attach to generic uclock ISR
+  //TimerTC4.attachInterrupt(pulseGenISR3);
+  #endif
 
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-		_pulseGenTimer3 = timerBegin(TIMER_ID, 60, true);
-
-		// attach to generic uclock ISR
-		timerAttachInterrupt(_pulseGenTimer3, &pulseGenISR3, true);
-
-		// init clock tick time
-		timerAlarmWrite(_pulseGenTimer3, init_clock, true); 
-
-		// activate it!
-		timerAlarmEnable(_pulseGenTimer3);
-	#endif
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+  _pulseGenTimer3 = timerBegin(TIMER_ID, 60, true);
+  // attach to generic uclock ISR
+  timerAttachInterrupt(_pulseGenTimer3, &pulseGenISR3, true);
+  // init clock tick time
+  timerAlarmWrite(_pulseGenTimer3, init_clock, true); 
+  // activate it!
+  timerAlarmEnable(_pulseGenTimer3);
+  #endif
 }
 #endif
 
@@ -351,7 +313,7 @@ void pulseGenClass::start()
 {
   if (state == STOPED) {
     ATOMIC(
-      start_timer = millis();
+      start_timer = 0;
       if (onClockStartCallback) {
         onClockStartCallback();
       } 
@@ -506,19 +468,19 @@ bool pulseGenClass::setTimerFrequency(float hertz)
   long tick_us_interval = (1.0 / hertz) * 1000000;
 
   #if defined(TEENSYDUINO)
-    _pulseGenTimer1.update(tick_us_interval);
-    return true;
+  _pulseGenTimer1.update(tick_us_interval);
+  return true;
   #endif
 
   #if defined(SEEED_XIAO_M0)
-    TimerTcc0.setPeriod(tick_us_interval);    
-    return true;
+  TimerTcc0.setPeriod(tick_us_interval);    
+  return true;
   #endif
 
-	#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
-    timerAlarmWrite(_pulseGenTimer1, tick_us_interval, true);
-		return true;
-	#endif
+  #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+  timerAlarmWrite(_pulseGenTimer1, tick_us_interval, true);
+  return true;
+  #endif
 #endif
 }
 
@@ -530,12 +492,18 @@ float pulseGenClass::getFrequency(PULSER_ID id)
 // elapsed time support
 unsigned long pulseGenClass::micros()
 {
-  return _micros;
+  if (pulseGen._pulser_high_frequency_enabled == false) {
+    unsigned long micros;
+    ATOMIC(micros = _micros)
+    return micros;
+  } else {
+    return micros();
+  }
 }
 
 unsigned long pulseGenClass::millis()
 {
-  return _micros/1000;
+  return micros()/1000;
 }
 
 uint8_t pulseGenClass::getNumberOfSeconds()
@@ -598,7 +566,7 @@ void pulseGenClass::setDuttyHelpers(float freq)
   uint32_t dsp_dutty_modulation_rate = map(_dsp_dutty_modulation_rate, 0, 100, freq, 1);
   
   ATOMIC(
-    _dutty_interval_us = freq_interval_us * (_dutty / 100.00);
+    _dutty_interval_us = (freq_interval_us * (_dutty / 100.00)) - US_SHIFT;
     _dutty_interval_min_us = freq_interval_us * (_min_dutty / 100.00);
     _dutty_interval_max_us = freq_interval_us * (_max_dutty / 100.00);
     _dutty_interval_ms = _dutty_interval_us / 1000;
@@ -680,7 +648,7 @@ void pulseGenClass::pulser1Handler()
     pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_1].dutty;
   }
 
-  if (--pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl == 0) {
+  if (pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER1_PIN, LOW);
   }
 
@@ -698,7 +666,7 @@ void pulseGenClass::pulser2Handler()
     pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_2].dutty;
   }
 
-  if (--pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl == 0) {
+  if (pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER2_PIN, LOW);
   }
 
@@ -716,7 +684,7 @@ void pulseGenClass::pulser3Handler()
     pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_3].dutty;
   }
 
-  if (--pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl == 0) {
+  if (pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER3_PIN, LOW);
   }
 
@@ -826,9 +794,9 @@ void ARDUINO_ISR_ATTR pulseGenISR1()
 void pulseGenISR1() 
 #endif
 {
-  // use timer1 for timming counting
-  pulseGen._micros += CLOCK_BASE_US;
   if (pulseGen._pulser_high_frequency_enabled == false) {
+    // use timer1 for timming counting
+    pulseGen._micros += CLOCK_BASE_US;
     pulseGen.pulser1Handler();
   } else {
     pulseGen.pulserHighFreqHandler();
@@ -839,11 +807,11 @@ void pulseGenISR1()
 // PULSER_2 INTERRUPT HANDLER 
 // 
 #if defined(ARDUINO_ARCH_AVR)
-	#if defined(__AVR_ATmega32U4__)	
+  #if defined(__AVR_ATmega32U4__)	
 ISR(TIMER3_COMPA_vect) 
-	#else
+  #else
 ISR(TIMER2_COMPA_vect) 
-	#endif
+  #endif
 #elif defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
 void ARDUINO_ISR_ATTR pulseGenISR2()
 #else

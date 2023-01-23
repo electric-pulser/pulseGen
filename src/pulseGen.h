@@ -35,27 +35,41 @@
 
 #include "wavetable.h"
 
-#define CLOCK_BASE_US   100
+#if defined(ARDUINO_ARCH_AVR)
+  // 16mhz avrs needs clock base 100us
+  #define CLOCK_BASE_US   100
+#else
+  // 48mhz+ arm boards can do 10us
+  #define CLOCK_BASE_US   10
+#endif
+
+// compesate processing at high speed in micro seconds
+#define US_SHIFT          4
 
 namespace pulsegen {
 
 // pins setup for fastWrite usage
-//#define PULSER1_PIN    3
-//#define PULSER2_PIN    9
-//#define PULSER3_PIN    4
 #define PULSER1_PIN    9
 #define PULSER2_PIN    8
 #define PULSER3_PIN    7
 
-// minimun for AVRs 
-#define MIN_FREQUENCY  0.1
-#define MAX_FREQUENCY 50000 // 2.5kHz x 100
-
-// from 5khz on we get dutty problems...
+#if defined(ARDUINO_ARCH_AVR)
+  // minimun for AVRs 
+  #define MIN_FREQUENCY  0.1
+  #define MAX_FREQUENCY 2500 // 2.5kHz x 100
+#else
+  #define MIN_FREQUENCY  0.1
+  #define MAX_FREQUENCY 25000 // ?? x 10
+#endif
 
 // for high frequency blocking pulser
-#define MIN_HIGH_FREQUENCY  0.3
-#define MAX_HIGH_FREQUENCY 50000 // 50kHz
+#if defined(ARDUINO_ARCH_AVR)
+  #define MIN_HIGH_FREQUENCY  0.3
+  #define MAX_HIGH_FREQUENCY 25000 // 25kHz on avrs
+#else
+  #define MIN_HIGH_FREQUENCY  0.3
+  #define MAX_HIGH_FREQUENCY 100000 // 48mhz arms goes to 100khz is the maximun
+#endif
 
 // XIAO TC3 library is legacy and bugged for setPeriod() only works initialize()
 // https://forum.arduino.cc/t/i-have-trouble-using-arduinozeros-timer-tc3/1012469/17
@@ -101,22 +115,22 @@ class pulseGenClass {
 
   public:
 
-    volatile uint32_t start_timer = 0;
+    volatile unsigned long start_timer = 0;
     volatile uint8_t state = STOPED;
     volatile unsigned long _micros = 0;
     volatile bool _pulser_high_frequency_enabled = false;
     volatile PULSER_CTRL pulser[MAX_PULSERS];
 
-		void (*onClockStartCallback)();
-		void (*onClockStopCallback)();
+    void (*onClockStartCallback)();
+    void (*onClockStopCallback)();
 
-		void setOnClockStartOutput(void (*callback)()) {
-			onClockStartCallback = callback;
-		}
+    void setOnClockStartOutput(void (*callback)()) {
+      onClockStartCallback = callback;
+    }
 
-		void setOnClockStopOutput(void (*callback)()) {
-			onClockStopCallback = callback;
-		}
+    void setOnClockStopOutput(void (*callback)()) {
+      onClockStopCallback = callback;
+    }
 
     pulseGenClass();
     
