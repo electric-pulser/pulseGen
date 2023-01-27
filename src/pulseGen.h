@@ -49,8 +49,12 @@
 namespace pulsegen {
 
 // pins setup for fastWrite usage
-#define PULSER1_PIN    9
-#define PULSER2_PIN    8
+//#define PULSER1_PIN    9
+//#define PULSER2_PIN    8
+#define PULSER1_PIN    3
+#define PULSER2_PIN    4
+//#define PULSER1_PIN    3
+//#define PULSER2_PIN    9
 #define PULSER3_PIN    7
 
 #if defined(ARDUINO_ARCH_AVR)
@@ -59,7 +63,7 @@ namespace pulsegen {
   #define MAX_FREQUENCY 2500 // 2.5kHz x 100
 #else
   #define MIN_FREQUENCY  0.1
-  #define MAX_FREQUENCY 25000 // ?? x 10
+  #define MAX_FREQUENCY 25000 // 25khz x 10
 #endif
 
 // for high frequency blocking pulser
@@ -67,7 +71,11 @@ namespace pulsegen {
   #define MIN_HIGH_FREQUENCY  0.3
   #define MAX_HIGH_FREQUENCY 25000 // 25kHz on avrs
 #else
-  #define MIN_HIGH_FREQUENCY  0.3
+  #if defined(SEEED_XIAO_M0)
+    #define MIN_HIGH_FREQUENCY  3.00 // xiao Timers are buggued, avoid it
+  #else
+    #define MIN_HIGH_FREQUENCY  0.3
+  #endif
   #define MAX_HIGH_FREQUENCY 100000 // 48mhz arms goes to 100khz is the maximun
 #endif
 
@@ -82,7 +90,11 @@ namespace pulsegen {
 #define SECS_PER_HOUR (3600UL)
 #define SECS_PER_DAY  (SECS_PER_HOUR * 24L)
 
-#define MAX_PULSERS    3
+#if defined(SEEED_XIAO_M0) // xiao tc3 bugged
+  #define MAX_PULSERS    1
+#else
+  #define MAX_PULSERS    3
+#endif
 
 #define DEFAULT_DUTTY            50 // 50%
 
@@ -109,6 +121,14 @@ typedef struct
   long pulse_counter;
   long dutty;
   long dutty_ctrl;
+
+  // pwm mod support
+  bool pwm_mod = false;
+  long min_dutty;
+  long max_dutty;
+  long pwm_mod_freq;
+  long pwm_mod_freq_counter;
+  long pwm_mod_ctrl;
 } PULSER_CTRL;
 
 class pulseGenClass {
@@ -139,15 +159,21 @@ class pulseGenClass {
     void stop();
     void pause();
 
-    void setPulser(PULSER_ID id, float hertz, uint8_t dutty);
-    void setHighFreqPulser(float hertz, uint8_t dutty);
     float getFrequency(PULSER_ID id = PULSER_1);
 
+    // for low frequency 3x timers 
+    void setPulser(PULSER_ID id, float hertz = 10.00, uint8_t dutty = DEFAULT_DUTTY);
     void pulser1Handler();
     void pulser2Handler();
     void pulser3Handler();
-    void pulserHighFreqHandler();
 
+    void setPwmMod(PULSER_ID id, float freq, uint8_t min_dutty, uint8_t max_dutty);
+
+    // for high frequency only
+    void setHighFreqPulser();
+    bool setFrequency(float hertz);
+    void pulserHighFreqHandler();
+    void setHelperPulsePin(uint8_t pin);
     void setVaryingTime(bool state);
     void setVaryingTimePackSize(uint8_t size);
     void setVaryingTimePulsesInBundle(uint32_t pulses);
@@ -205,6 +231,7 @@ class pulseGenClass {
     volatile uint8_t _dsp_dutty_modulation_rate = 10; 
     volatile uint32_t _dsp_dutty_modulation_rate_helper = 0; // pulses per wavetable step
     volatile bool _dsp_pwm_mod_flux_invertion = false;
+    volatile uint8_t _pulser_high_frequency_pin = 0;
     //volatile uint16_t _use_dutty_modulation_type = sawtooth | triangule | random;
     // time modulation
     volatile bool _use_varying_time_pulses = false;

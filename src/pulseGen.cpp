@@ -42,8 +42,8 @@
   // 24 bits timer
   #include <TimerTCC0.h>
   // uses TimerTcc0
-  // 16 bits timer
-  #include <TimerTC3.h>
+  // 16 bits timer buggued!
+  //#include <TimerTC3.h>
   // uses TimerTc3
   //#include <TimerTC1.h>
   // uses TimerTc1
@@ -74,10 +74,6 @@
 #else
   #define ATOMIC(X) noInterrupts(); X; interrupts();
 #endif
-
-// move this to wavetable.h as definition
-const volatile uint8_t _sine[]={0,1,5,10,18,27,39,52,66,82,98,115,132,149,165,181,196,210,222,233,241,248,252,255,255,252,248,241,233,222,210,196,181,165,149,132,115,98,82,66,52,39,27,18,10,5,1,0};
-int _wavetable_size = sizeof _sine / sizeof _sine[0];
 
 //
 // TIMER_1 setup
@@ -215,10 +211,10 @@ void pulseGenInitTimer2()
   _pulseGenTimer2.priority(70);
   #endif
 
-  #if defined(SEEED_XIAO_M0)
-  TimerTc3.initialize(init_clock);
+  #if defined(SEEED_XIAO_M0) // xiao Tc3 is bugged!
+  //TimerTc3.initialize(init_clock);
   // attach to generic uclock ISR
-  TimerTc3.attachInterrupt(pulseGenISR2);
+  //TimerTc3.attachInterrupt(pulseGenISR2);
   #endif
 
   #if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
@@ -306,7 +302,6 @@ pulseGenClass::pulseGenClass()
 {
   onClockStartCallback = nullptr;
   onClockStopCallback = nullptr;
-  //resetRuntimeVars();
 }
 
 void pulseGenClass::start() 
@@ -327,6 +322,10 @@ void pulseGenClass::stop()
   if (state == RUNNING) {
     ATOMIC(
       start_timer = 0;
+      if (_pulser_high_frequency_enabled) {
+        resetRuntimeVars();
+        //resetVaryingTimePulsesVar();
+      }
       if (onClockStopCallback) {
         onClockStopCallback();
       }
@@ -342,6 +341,22 @@ void pulseGenClass::pause()
   } else if (state == PAUSED) {
     ATOMIC(state = RUNNING)
   }
+}
+
+void pulseGenClass::setPwmMod(PULSER_ID id, float freq, uint8_t min_dutty, uint8_t max_dutty)
+{
+  long freq_interval_us = (1.0 / freq) * 1000000;
+  long freq_base_us = (1.0 / pulser[id].frequency) * 1000000;
+
+  ATOMIC(
+    pulser[id].min_dutty = (freq_base_us * (min_dutty / 100.00)) / CLOCK_BASE_US;
+    pulser[id].max_dutty = (freq_base_us * (max_dutty / 100.00)) / CLOCK_BASE_US;
+
+    pulser[id].pwm_mod_freq_counter = (freq_interval_us / CLOCK_BASE_US) / WAVETABLE_SIZE;
+    pulser[id].pwm_mod_freq = pulser[id].pwm_mod_freq_counter;
+    pulser[id].pwm_mod_ctrl = 0;
+    pulser[id].pwm_mod = true;
+  )
 }
 
 void pulseGenClass::setPulser(PULSER_ID id, float hertz, uint8_t dutty) 
@@ -390,33 +405,43 @@ void pulseGenClass::setPulser(PULSER_ID id, float hertz, uint8_t dutty)
 }
 
 // this is a block option to go further on high frequencies
-void pulseGenClass::setHighFreqPulser(float hertz, uint8_t dutty) 
+void pulseGenClass::setHighFreqPulser() 
 {
-  if (hertz < MIN_HIGH_FREQUENCY || hertz > MAX_HIGH_FREQUENCY)
-    return;
-
-  long tick_us_interval = (1.0 / hertz) * 1000000;
-
-  pulser[PULSER_1].dutty = dutty;
-  pulser[PULSER_1].dutty_ctrl = dutty;
-
   if (pulser[PULSER_1].active == false) {
     // freq function pins setup
     pinMode(PULSER1_PIN, OUTPUT);
     digitalWrite(PULSER1_PIN, LOW);
+    // in case we want to use pin change on dutty mod
+    pinMode(PULSER2_PIN, OUTPUT);
+    digitalWrite(PULSER2_PIN, LOW);
     // init hardware timer
     _pulser_high_frequency_enabled = true;
+    state = STOPED;
     pulseGenInitTimer1();
   }
 
+  pulser[PULSER_1].active = true;
+}
+
+bool pulseGenClass::setFrequency(float hertz) 
+{
+  if (hertz < MIN_HIGH_FREQUENCY || hertz > MAX_HIGH_FREQUENCY)
+    return false;
+
+  pulser[PULSER_1].dutty = _dutty;
+
   if (setTimerFrequency(hertz)) {
     ATOMIC(pulser[PULSER_1].frequency = hertz)
-    setMaxDutty(pulser[PULSER_1].dutty);
-    setDuttyPwm(pulser[PULSER_1].dutty);
     setDuttyHelpers(hertz);
+    return true;
   }
 
-  pulser[PULSER_1].active = true;
+  return false;
+}
+
+void pulseGenClass::setHelperPulsePin(uint8_t pin)
+{
+  ATOMIC(_pulser_high_frequency_pin = pin)
 }
 
 // this is only used by high frequency pulser option
@@ -503,7 +528,7 @@ unsigned long pulseGenClass::micros()
 
 unsigned long pulseGenClass::millis()
 {
-  return micros()/1000;
+  return pulseGen.micros()/1000;
 }
 
 uint8_t pulseGenClass::getNumberOfSeconds()
@@ -538,15 +563,14 @@ void pulseGenClass::resetRuntimeVars()
     _dsp_pwm_mod_flux_invertion = false;
     _max_dutty = DEFAULT_DUTTY;
     _dutty = DEFAULT_DUTTY;
-    //_dsp_wavetable_ctrl = 0;
+    _dsp_wavetable_ctrl = 0;
     _dsp_wavetable_ctrl_helper = 0;
-    //_dsp_wavetable_ctrl_idx = 1;
-    //_dsp_lock_flux_guard = false;
+    _dsp_wavetable_ctrl_idx = 1;
+    _dsp_lock_flux_guard = false;
     _use_dutty_modulation_type = 0;
     _dsp_dutty_modulation_rate = 10; 
     _dsp_dutty_modulation_rate_helper = 0;
-    _dsp_pwm_mod_flux_invertion = false;
-    //_flux_dir_pin = NORTH_PIN;
+    _pulser_high_frequency_pin = 0;
   )
 }
 
@@ -644,10 +668,26 @@ void pulseGenClass::pulser1Handler()
   if (pulseGen.pulser[pulsegen::PULSER_1].pulse_counter == pulseGen.pulser[pulsegen::PULSER_1].freq_counter) {
     if (pulseGen.state == RUNNING)
       digitalWriteFast(PULSER1_PIN, HIGH);
-    // set dutty ctrl
-    pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_1].dutty;
+
+    if (pulseGen.pulser[pulsegen::PULSER_1].pwm_mod == false) {
+      // set dutty ctrl
+      pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_1].dutty;
+    } else {
+      // modulated PWM?
+      pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl = map(_WAVETABLE_SINE[pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_ctrl], 0, 255, pulseGen.pulser[pulsegen::PULSER_1].min_dutty, pulseGen.pulser[pulsegen::PULSER_1].max_dutty);
+    }
   }
 
+  // modulated PWM?
+  if (pulseGen.pulser[pulsegen::PULSER_1].pwm_mod == true) {
+    if(--pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_freq == 0) {
+      if (++pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_ctrl == WAVETABLE_SIZE) {
+        pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_ctrl = 0;
+      }
+      pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_freq = pulseGen.pulser[pulsegen::PULSER_1].pwm_mod_freq_counter;
+    }
+  }
+  
   if (pulseGen.pulser[pulsegen::PULSER_1].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER1_PIN, LOW);
   }
@@ -662,10 +702,26 @@ void pulseGenClass::pulser2Handler()
   if (pulseGen.pulser[pulsegen::PULSER_2].pulse_counter == pulseGen.pulser[pulsegen::PULSER_2].freq_counter) {
     if (pulseGen.state == RUNNING)
       digitalWriteFast(PULSER2_PIN, HIGH);
-    // set dutty ctrl
-    pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_2].dutty;
+
+    if (pulseGen.pulser[pulsegen::PULSER_2].pwm_mod == false) {
+      // set dutty ctrl
+      pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_2].dutty;
+    } else {
+      // modulated PWM?
+      pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl = map(_WAVETABLE_SINE[pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_ctrl], 0, 255, pulseGen.pulser[pulsegen::PULSER_2].min_dutty, pulseGen.pulser[pulsegen::PULSER_2].max_dutty);
+    }
   }
 
+  // modulated PWM?
+  if (pulseGen.pulser[pulsegen::PULSER_2].pwm_mod == true) {
+    if(--pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_freq == 0) {
+      if (++pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_ctrl == WAVETABLE_SIZE) {
+        pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_ctrl = 0;
+      }
+      pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_freq = pulseGen.pulser[pulsegen::PULSER_2].pwm_mod_freq_counter;
+    }
+  }
+  
   if (pulseGen.pulser[pulsegen::PULSER_2].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER2_PIN, LOW);
   }
@@ -680,10 +736,26 @@ void pulseGenClass::pulser3Handler()
   if (pulseGen.pulser[pulsegen::PULSER_3].pulse_counter == pulseGen.pulser[pulsegen::PULSER_3].freq_counter) {
     if (pulseGen.state == RUNNING)
       digitalWriteFast(PULSER3_PIN, HIGH);
-    // set dutty ctrl
-    pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_3].dutty;
+
+    if (pulseGen.pulser[pulsegen::PULSER_3].pwm_mod == false) {
+      // set dutty ctrl
+      pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl = pulseGen.pulser[pulsegen::PULSER_3].dutty;
+    } else {
+      // modulated PWM?
+      pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl = map(_WAVETABLE_SINE[pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_ctrl], 0, 255, pulseGen.pulser[pulsegen::PULSER_3].min_dutty, pulseGen.pulser[pulsegen::PULSER_3].max_dutty);
+    }
   }
 
+  // modulated PWM?
+  if (pulseGen.pulser[pulsegen::PULSER_3].pwm_mod == true) {
+    if(--pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_freq == 0) {
+      if (++pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_ctrl == WAVETABLE_SIZE) {
+        pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_ctrl = 0;
+      }
+      pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_freq = pulseGen.pulser[pulsegen::PULSER_3].pwm_mod_freq_counter;
+    }
+  }
+  
   if (pulseGen.pulser[pulsegen::PULSER_3].dutty_ctrl-- == 0) {
     digitalWriteFast(PULSER3_PIN, LOW);
   }
@@ -695,6 +767,9 @@ void pulseGenClass::pulser3Handler()
 
 void pulseGenClass::pulserHighFreqHandler()
 {
+  if (pulseGen.state != RUNNING)
+    return;
+
   if (_use_varying_time_pulses) {
     // creating solo bundles of varying_time_pulses_bundle_size_pulses pulses size
     if(_pulses_bundle_counter >= _varying_time_pulses_bundle_size_pulses) {
@@ -729,7 +804,8 @@ void pulseGenClass::pulserHighFreqHandler()
   // wait the dutty time to be blocked
   _us = _dutty_interval_us;
 
-  digitalWriteFast(PULSER1_PIN, HIGH);
+  digitalWriteFast(_pulser_high_frequency_pin ? PULSER2_PIN : PULSER1_PIN, HIGH);
+  //digitalWriteFast(PULSER1_PIN, HIGH);
 
   // milliseconds
   if (_dutty_interval_ms > 0) {
@@ -743,7 +819,8 @@ void pulseGenClass::pulserHighFreqHandler()
     delayMicroseconds(_us);
   }
 
-  digitalWriteFast(PULSER1_PIN, LOW);
+  digitalWriteFast(_pulser_high_frequency_pin ? PULSER2_PIN : PULSER1_PIN, LOW);
+  //digitalWriteFast(PULSER1_PIN, LOW);
   
   ++_pulses_bundle_counter;
   ++_pulses_counter;
@@ -756,20 +833,21 @@ void pulseGenClass::pulserHighFreqHandler()
     
     if (_pulses_counter - _dsp_wavetable_ctrl_helper >= _dsp_dutty_modulation_rate_helper) {
     
-      if (_dsp_wavetable_ctrl >= _wavetable_size) {
+      if (_dsp_wavetable_ctrl >= WAVETABLE_SIZE) {
         _dsp_wavetable_ctrl = 0;
       }
     
-      //if (_dsp_wavetable_ctrl == 0 && _dsp_pwm_mod_flux_invertion) {
+      if (_dsp_wavetable_ctrl == 0 && _dsp_pwm_mod_flux_invertion) {
         // change direction at min dutty? TODO: check it here!
-        ////invertFluxDirection(true);
-      //}
+        _pulser_high_frequency_pin = !_pulser_high_frequency_pin;
+        //invertFluxDirection(true);
+      }
     
       if (_dutty_interval_ms > 0) {
-        _dutty_interval_ms = map(_sine[_dsp_wavetable_ctrl], 0, 255, _dutty_interval_min_ms, _dutty_interval_max_ms);
+        _dutty_interval_ms = map(_WAVETABLE_SINE[_dsp_wavetable_ctrl], 0, 255, _dutty_interval_min_ms, _dutty_interval_max_ms);
       }
       if (_dutty_interval_us  > 0) {
-        _dutty_interval_us = map(_sine[_dsp_wavetable_ctrl], 0, 255, _dutty_interval_min_us, _dutty_interval_max_us);
+        _dutty_interval_us = map(_WAVETABLE_SINE[_dsp_wavetable_ctrl], 0, 255, _dutty_interval_min_us, _dutty_interval_max_us);
       }
     
       _dsp_wavetable_ctrl_helper = _pulses_counter;
