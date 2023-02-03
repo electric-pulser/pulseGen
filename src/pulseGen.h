@@ -33,6 +33,7 @@
 #include <inttypes.h>
 #include <digitalWriteFast.h>
 
+// lookup tables
 #include "wavetable.h"
 
 #if defined(ARDUINO_ARCH_AVR)
@@ -51,10 +52,10 @@ namespace pulsegen {
 // pins setup for fastWrite usage
 //#define PULSER1_PIN    9
 //#define PULSER2_PIN    8
-#define PULSER1_PIN    3
-#define PULSER2_PIN    4
 //#define PULSER1_PIN    3
-//#define PULSER2_PIN    9
+//#define PULSER2_PIN    4
+#define PULSER1_PIN    11
+#define PULSER2_PIN    9
 #define PULSER3_PIN    7
 
 #if defined(ARDUINO_ARCH_AVR)
@@ -186,6 +187,8 @@ class pulseGenClass {
     void setMaxDutty(uint8_t dutty);
     void setDuttyPwm(uint8_t dutty);
     void setPwmModFluxInvertion(bool invert_mod);
+    void resetRuntimeVars();
+    void resetVaryingTimePulsesVar();
 
     // elapsed time support
     unsigned long micros();
@@ -204,8 +207,6 @@ class pulseGenClass {
   private:
     
     bool setTimerFrequency(float hertz);
-    void resetRuntimeVars();
-    void resetVaryingTimePulsesVar();
     void setDuttyHelpers(float freq);
 
     // we can use a potentiometer to control pulse duration per sec

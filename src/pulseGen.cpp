@@ -322,10 +322,10 @@ void pulseGenClass::stop()
   if (state == RUNNING) {
     ATOMIC(
       start_timer = 0;
-      if (_pulser_high_frequency_enabled) {
-        resetRuntimeVars();
+      ////if (_pulser_high_frequency_enabled) {
+        ////resetRuntimeVars();
         //resetVaryingTimePulsesVar();
-      }
+      ////}
       if (onClockStopCallback) {
         onClockStopCallback();
       }
@@ -597,8 +597,8 @@ void pulseGenClass::setDuttyHelpers(float freq)
     _dutty_interval_min_ms = _dutty_interval_min_us / 1000;
     _dutty_interval_max_ms = _dutty_interval_max_us / 1000;
     _dsp_dutty_modulation_rate_helper = dsp_dutty_modulation_rate;
-    _dsp_wavetable_ctrl_helper = 0;
-    _dsp_wavetable_ctrl = 0;
+    //_dsp_wavetable_ctrl_helper = 0;
+    //_dsp_wavetable_ctrl = 0;
   )
 }
 
